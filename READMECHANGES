@@ -1,0 +1,7 @@
+I have modified the original python script with the following tweaks:
+
+Changed search engine to Bing.   Google always redirects everything of HTTPS and I wanted a clear text HTTP search.
+Added images to the downloads.  
+Added a few other seed sites.
+Ignored SSL errors.  (still need to test if SSL MITM will work with this)
+Removed most 'bad' categories from the url blacklist.   I'm actually hoping to see if this host will download something malicious.
