@@ -131,7 +131,7 @@ the choice of VPN provider, complicates networking, and adds the
 real issue of navigating captchas when appearing as a Tor exit node.
 
 The crawler uses the Python requests and lxml.html libraries, is hardcoded
-to download html without javascript processing, will not download
+to download html without javascript processing, will (now) download
 images, and respects robots.txt, which all provide good security.
 '''
 
