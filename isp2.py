@@ -521,7 +521,8 @@ images, and respects robots.txt, which all provide good security.
 
     def get_websearch(self,query):
         '''HTTP GET of a websearch, then add any embedded links.'''
-        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}&safe=active'.format(query)))
+	#removed &safe=active from the end of q={} to remove safe search
+        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}'.format(query)))
         signal.signal(signal.SIGALRM, self.phantomjs_hang_handler) # register hang handler
         signal.alarm(self.timeout+2)  # set an alarm
         try:
