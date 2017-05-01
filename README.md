@@ -1,16 +1,16 @@
-# ISP Data Pollution
+# Psuedo-random web crawlere
 
-Congress's party-line vote will allow ISP's to exploit your family's private data without your consent. See "**[Senate Puts ISP Profits Over Your Privacy](https://www.eff.org/deeplinks/2017/03/senate-puts-isp-profits-over-your-privacy)**".
+I forked this because I have an alternative use case from the original author;  I needed an automated system to generate web crawling activity.   I tweaked a few things in the script:   
 
-This script is designed to defeat this violation by generating large amounts of realistic, random web browsing to pollute ISP data and render it effectively useless by obfuscating actual browsing data.
+Search now uses Bing over HTTP.   Original script used Google which redirects over HTTPS.   
+Downloads images and executes javascript.
+Changed SSL settings to any protocol.
+Add a few more seed bias links.
 
-I pay my ISP a lot for data usage every month. I typically don't use all the bandwidth that I pay for. If my ISP is going to sell private browsing habits, then I'm going to pollute browsing with noise and use all the bandwidth that I pay for. This method accomplishes this.
 
-If everyone uses all the data they've paid for to pollute their browsing history, then perhaps ISPs will reconsider the business model of selling customer's private browsing history.
 
-The [alternative](https://arstechnica.com/information-technology/2017/03/how-isps-can-sell-your-web-history-and-how-to-stop-them/) of using a VPN or Tor merely pushes the issue onto to the choice of VPN provider, complicates networking, and adds the real issue of navigating captchas when appearing as a Tor exit node. Also, merely encrypted traffic has too much [exploitable side-channel information](https://www.theatlantic.com/technology/archive/2017/03/encryption-wont-stop-your-internet-provider-from-spying-on-you/521208/), and could still be used to determine when specific family members are at home, and the activities in which they're engaged.
 
-This crawler uses the Python selenium with phantomjs library, uses blacklists for undesirable websites (see the code for details), does not download images, and respects robots.txt, which all provide good security.
+This crawler uses the Python selenium with phantomjs library, uses blacklists for undesirable websites (see the code for details), and respects robots.txt.
 
 # Command Line
 
@@ -149,6 +149,36 @@ sudo port install py34-numpy py34-requests py34-psutil phantomjs
 ```
 
 Figure out how to install these libraries on your OS, and the script will run.
+
+# Installation on Ubuntu 16
+
+Here are my rough instructions to install this on Ubuntu 16
+
+
+  sudo apt-get install git
+  git clone https://github.com/essandess/isp-data-pollution.git
+  cd isp-data-pollution/
+  sudo apt install python3-pip
+  pip3 install --upgrade pip 
+  pip3 install numpy
+  pip3 install psutil
+  sudo -H pip3 install psutil --upgrade
+  sudo -H pip3 install --upgrade pip
+  sudo -H pip3 install selenium
+  sudo -H pip3 install faker
+  sudo apt-get install fontconfig
+  sudo apt-get install libfontconfig
+  sudo apt-get install build-essential chrpath libssl-dev libxft-dev
+  sudo apt-get install libfreetype6 libfreetype6-dev
+  sudo apt-get install libfontconfig1 libfontconfig1-dev
+<download latest version of PhantomJS from their website>
+  export PHANTOM_JS="phantomjs-2.1.1-linux-x86_64"
+  sudo mv $PHANTOM_JS /usr/local/share
+  ls /usr/local/share
+  sudo ln -sf /usr/local/share/$PHANTOM_JS/bin/phantomjs /usr/local/bin
+  phantomjs --version
+<if the above doesn't return a version number, something is broken!>
+
 
 
 This is what was necessary on macOS:
