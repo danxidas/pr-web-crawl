@@ -154,7 +154,7 @@ Figure out how to install these libraries on your OS, and the script will run.
 
 Here are my rough instructions to install this on Ubuntu 16
 
-
+```
   sudo apt-get install git
   git clone https://github.com/essandess/isp-data-pollution.git
   cd isp-data-pollution/
@@ -178,7 +178,7 @@ Here are my rough instructions to install this on Ubuntu 16
   sudo ln -sf /usr/local/share/$PHANTOM_JS/bin/phantomjs /usr/local/bin
   phantomjs --version
 <if the above doesn't return a version number, something is broken!>
-
+```
 
 
 This is what was necessary on macOS:
