@@ -1,4 +1,4 @@
-# Psuedo-random web crawlere
+# Psuedo-random web crawler
 
 I forked this because I have an alternative use case from the original author;  I needed an automated system to generate web crawling activity.   I tweaked a few things in the script:   
 
