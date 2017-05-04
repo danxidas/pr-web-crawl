@@ -46,6 +46,7 @@ max_links_per_domain = 400	# Maximum number of links to add per domain
 search_url = 'http://www.bing.com/search?q='	# keep unencrypted for ISP DPI
 wordsite_url = 'http://svnweb.freebsd.org/csrg/share/dict/words?view=co&content-type=text/plain'
 timeout = 20
+short_timeout = 3
 
 blacklist_url = 'http://www.shallalist.de/Downloads/shallalist.tar.gz'
 # Usage of the Shalla Blacklists:
@@ -88,10 +89,9 @@ seed_bias_links = ['http://my.xfinity.com/news',
 
 # monkeypatch the read class method in RobotFileParser
 # many sites will block access to robots.txt without a standard User-Agent header
-robot_timeout = 3
 class RobotFileParserUserAgent(robotparser.RobotFileParser):
 
-    timeout = robot_timeout  # short-term timeout
+    timeout = short_timeout  # short-term timeout
 
     def read(self):
         """Reads the robots.txt URL and feeds it to the parser."""
@@ -112,6 +112,7 @@ class RobotFileParserUserAgent(robotparser.RobotFileParser):
 # Notes for the future:
 # 1. The bandwidth usage is undoubtedly (much) smaller because gzip encoding is used
 # 2. A lightweight proxy could be used for accurate bandwidth, and header editing
+
 
 class ISPDataPollution:
     '''Re: https://www.eff.org/deeplinks/2017/03/senate-puts-isp-profits-over-your-privacy
@@ -144,7 +145,13 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         # self.gb_per_month = gb_per_month  # set in parseArgs
         # self.debug = debug  # set in parseArgs
         self.args = self.args = self.parseArgs()
-        signal.signal(signal.SIGALRM, self.phantomjs_hang_handler) # register hang handler
+        # timeout configurable decorators
+        self.phantomjs_timeout = self.block_timeout(self.phantomjs_hang_handler, \
+            alarm_time=self.timeout+2,errors=(self.TimeoutError,), debug=self.debug)
+        self.phantomjs_short_timeout = self.block_timeout(self.phantomjs_hang_handler, \
+            alarm_time=short_timeout+1,errors=(self.TimeoutError,Exception), debug=self.debug)
+        self.robots_timeout = self.block_timeout(self.robots_hang_handler, \
+            alarm_time=short_timeout+1,errors=(self.TimeoutError,), debug=self.debug)
         self.fake = Factory.create()
         self.hour_trigger = True
         self.twentyfour_hour_trigger = True
@@ -197,17 +204,13 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         # http://stackoverflow.com/questions/25110624/how-to-properly-stop-phantomjs-execution
         if hasattr(self,'session'):
             if not hard_quit:
-                signal.alarm(3)
-                try:
-                    self.session.close()
-                except self.TimeoutError as e:
-                    if self.debug: print('.close() timeout exception:\n{}'.format(e))
-                except Exception as e:
-                    if self.debug: print('.close() exception:\n{}'.format(e))
-                finally:
-                    signal.alarm(0)  # cancel the alarm
+                @self.phantomjs_short_timeout
+                def phantomjs_close(): self.session.close()
+                phantomjs_close()
             try:
-                self.session.service.process.send_signal(signal.SIGTERM)
+                @self.phantomjs_short_timeout
+                def phantomjs_send_signal(): self.session.service.process.send_signal(signal.SIGTERM)
+                phantomjs_send_signal()
             except Exception as e:
                 if self.debug: print('.send_signal() exception:\n{}'.format(e))
                 try:
@@ -219,8 +222,11 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
                 except Exception as e:
                     if self.debug: print('.kill() exception:\n{}'.format(e))
             try:
-                self.session.quit()
-                del self.session  # only delete session if quit is successful
+                @self.phantomjs_short_timeout
+                def phantomjs_quit():
+                    self.session.quit()
+                    del self.session  # only delete session if quit is successful
+                phantomjs_quit()
             except Exception as e:
                 if self.debug: print('.quit() exception:\n{}'.format(e))
 
@@ -228,12 +234,17 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         # https://sqa.stackexchange.com/questions/10466/how-to-clear-localstorage-using-selenium-and-webdriver
         if hasattr(self, 'session'):
             try:
-                self.session.delete_all_cookies()
+                @self.phantomjs_short_timeout
+                def phantomjs_delete_all_cookies(): self.session.delete_all_cookies()
+                phantomjs_delete_all_cookies()
             except Exception as e:
                 if self.debug: print('.delete_all_cookies() exception:\n{}'.format(e))
             try:
-                self.session.execute_script('window.localStorage.clear();')
-                self.session.execute_script('window.sessionStorage.clear();')
+                @self.phantomjs_short_timeout
+                def phantomjs_clear():
+                    self.session.execute_script('window.localStorage.clear();')
+                    self.session.execute_script('window.sessionStorage.clear();')
+                phantomjs_clear()
             except Exception as e:
                 if self.debug: print('.execute_script() exception:\n{}'.format(e))
 
@@ -389,10 +400,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
 
     def exceeded_bandwidth_tasks(self):
         if self.bandwidth_test():
-            # decimate the stack and clear the cookies
-            if self.link_count() > int(np.ceil(0.81*self.max_links_cached)):
-                for url in self.draw_links(n=int(np.ceil(self.link_count()/10.))):
-                    self.pop_link()
+            self.decimate_links(total_frac=0.81,decimate_frac=0.1)
             time.sleep(120)
 
     def every_hour_tasks(self):
@@ -402,7 +410,9 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
                 self.set_user_agent()
                 if hasattr(self,'session'):
                     try:
-                        self.session.delete_all_cookies()
+                        @self.phantomjs_short_timeout
+                        def phantomjs_delete_all_cookies(): self.session.delete_all_cookies()
+                        phantomjs_delete_all_cookies()
                     except Exception as e:
                         if self.debug: print('.delete_all_cookies() exception:\n{}'.format(e))
                 self.hour_trigger = False
@@ -413,7 +423,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
 
     def every_day_tasks(self):
         if int(self.elapsed_time/3600. % 24.) == 23:
-            # clear out cookies every day, and seed more links
+            # clear out cookies every day, decimate, and seed more links
             if self.twentyfour_hour_trigger:
                 if hasattr(self,'session'):
                     self.seed_links()
@@ -422,6 +432,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
                     self.open_session()
                 else:
                     self.open_session()
+                    self.decimate_links(total_frac=0.667, decimate_frac=0.1)
                     self.seed_links()
                     if self.quit_driver_every_call: self.quit_session()
                 self.twentyfour_hour_trigger = False
@@ -433,15 +444,21 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             # reset bw stats and (really) decimate the stack every couple of weeks
             self.start_time = time.time()
             self.data_usage = 0
-            if self.link_count() > int(np.ceil(0.49*self.max_links_cached)):
-                for url in self.draw_links(n=int(np.ceil(self.link_count()/3.))):
-                    self.pop_link(url)
+            self.decimate_links(total_frac=0.49, decimate_frac=0.333)
+
+    def decimate_links(self, total_frac=0.81, decimate_frac=0.1):  # decimate the stack
+        if self.link_count() > int(np.ceil(total_frac * self.max_links_cached)):
+            for url in self.draw_links(n=int(np.ceil(self.link_count() * decimate_frac))):
+                self.remove_link(url)
 
     def set_user_agent(self):
         global user_agent
         self.user_agent = self.fake.user_agent() if npr.random() < 0.95 else user_agent
         try:
-            self.session.capabilities.update({'phantomjs.page.settings.userAgent': self.user_agent})
+            @self.phantomjs_short_timeout
+            def phantomjs_capabilities_update():
+                self.session.capabilities.update({'phantomjs.page.settings.userAgent': self.user_agent})
+            phantomjs_capabilities_update()
         except Exception as e:
             if self.debug: print('.update() exception:\n{}'.format(e))
 
@@ -450,8 +467,9 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
 
     def draw_links(self,n=1,log_sampling=False):
         urls = []
-        domain_count = np.array([(dmn,len(self.domain_links[dmn])) for dmn in self.domain_links])
-        p = np.array([np.float(c) for d,c in domain_count])
+        domain_array = np.array([dmn for dmn in self.domain_links])
+        domain_count = np.array([len(self.domain_links[domain_array[k]]) for k in range(domain_array.shape[0])])
+        p = np.array([np.float(c) for c in domain_count])
         count_total = p.sum()
         if log_sampling:  # log-sampling [log(x+1)] to bias lower count domains
             p = np.fromiter((np.log1p(x) for x in p), dtype=p.dtype)
@@ -459,14 +477,14 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             p = p/p.sum()
             cnts = npr.multinomial(n, pvals=p)
             if n > 1:
-                for k in range(len(cnts)):
-                    domain = domain_count[k][0]
-                    cnt = min(cnts[k],domain_count[k][1])
+                for k in range(cnts.shape[0]):
+                    domain = domain_array[k]
+                    cnt = min(cnts[k],domain_count[k])
                     for url in random.sample(self.domain_links[domain],cnt):
                         urls.append(url)
             else:
                 k = int(np.nonzero(cnts)[0])
-                domain = domain_count[k][0]
+                domain = domain_array[k]
                 url = random.sample(self.domain_links[domain],1)[0]
                 urls.append(url)
         return urls
@@ -504,79 +522,89 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
 
     def get_websearch(self,query):
         '''HTTP GET of a websearch, then add any embedded links.'''
-        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}'.format(query)))
-        signal.signal(signal.SIGALRM, self.phantomjs_hang_handler) # register hang handler
-        signal.alarm(self.timeout+2)  # set an alarm
-        try:
-            self.session.get(url)  # selenium driver
-        except self.TimeoutError as e:
-            if self.debug: print('.get() exception:\n{}'.format(e))
-        finally:
-            signal.alarm(0)  # cancel the alarm
-        try:
-            self.data_usage += len(self.session.page_source)
-        except Exception as e:
-            if self.debug: print('.page_source exception:\n{}'.format(e))
+        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}&safe=active'.format(query)))
+        @self.phantomjs_timeout
+        def phantomjs_get(): self.session.get(url)  # selenium driver
+        phantomjs_get()
+        @self.phantomjs_short_timeout
+        def phantomjs_page_source(): self.data_usage += len(self.session.page_source)
+        phantomjs_page_source()
         new_links = self.websearch_links()
         if self.link_count() < self.max_links_cached: self.add_url_links(new_links,url)
 
     def websearch_links(self):
         '''Webpage format for a popular search engine, <div class="g">'''
+        # https://github.com/detro/ghostdriver/issues/169
+        @self.phantomjs_short_timeout
+        def phantomjs_find_elements_by_css_selector():
+            return WebDriverWait(self.session,short_timeout).until(lambda x: x.find_elements_by_css_selector('div.g'))
+        elements = phantomjs_find_elements_by_css_selector()
+        # get links in random order until max. per page
+        k = 0
+        links = []
         try:
-            # https://github.com/detro/ghostdriver/issues/169
-            elements = WebDriverWait(self.session,3).until(lambda x: x.find_elements_by_css_selector('div.g'))
-            return [ div.find_element_by_tag_name('a').get_attribute('href') \
-                for div in elements \
-                     if div.find_element_by_tag_name('a').get_attribute('href') is not None ]
+            for div in sorted(elements,key=lambda k: random.random()):
+                @self.phantomjs_short_timeout
+                def phantomjs_find_element_by_tag_name(): return div.find_element_by_tag_name('a')
+                a_tag = phantomjs_find_element_by_tag_name()
+                @self.phantomjs_short_timeout
+                def phantomjs_get_attribute(): return a_tag.get_attribute('href')
+                href = phantomjs_get_attribute()
+                if href is not None: links.append(href)
+                k += 1
+                if k > self.max_links_per_page: break
         except Exception as e:
-            if self.debug: print('.find_element_by_tag_name() exception:\n{}'.format(e))
-            return []
+            if self.debug: print('.find_element_by_tag_name.get_attribute() exception:\n{}'.format(e))
+        return links
 
     def get_url(self,url):
         '''HTTP GET of the url, and add any embedded links.'''
         if not self.check_robots(url): return  # bail out if robots.txt says to
-        signal.signal(signal.SIGALRM, self.phantomjs_hang_handler) # register hang handler
-        signal.alarm(self.timeout+2)  # set an alarm
-        try:
-            self.session.get(url)  # selenium driver
-        except self.TimeoutError as e:
-            if self.debug: print('.get() exception:\n{}'.format(e))
-        finally:
-            signal.alarm(0)  # cancel the alarm
-        try:
-            self.data_usage += len(self.session.page_source)
-        except Exception as e:
-            if self.debug: print('.page_source exception:\n{}'.format(e))
+        @self.phantomjs_timeout
+        def phantomjs_get(): self.session.get(url)  # selenium driver
+        phantomjs_get()
+        @self.phantomjs_short_timeout
+        def phantomjs_page_source(): self.data_usage += len(self.session.page_source)
+        phantomjs_page_source()
         new_links = self.url_links()
         if self.link_count() < self.max_links_cached: self.add_url_links(new_links,url)
 
     def url_links(self):
-        '''Generic webpage link finder format.'''
+        """Generic webpage link finder format."""
+        # https://github.com/detro/ghostdriver/issues/169
+        @self.phantomjs_short_timeout
+        def phantomjs_find_elements_by_tag_name():
+            return WebDriverWait(self.session,3).until(lambda x: x.find_elements_by_tag_name('a'))
+        elements = phantomjs_find_elements_by_tag_name()
+
+        # get links in random order until max. per page
+        k = 0
+        links = []
         try:
-            # https://github.com/detro/ghostdriver/issues/169
-            elements = WebDriverWait(self.session,3).until(lambda x: x.find_elements_by_tag_name('a'))
-            return [ a.get_attribute('href') \
-                for a in elements if a.get_attribute('href') is not None ]
+            for a in sorted(elements,key=lambda k: random.random()):
+                @self.phantomjs_short_timeout
+                def phantomjs_get_attribute(): return a.get_attribute('href')
+                href = phantomjs_get_attribute()
+                if href is not None: links.append(href)
+                k += 1
+                if k > self.max_links_per_page: break
         except Exception as e:
             if self.debug: print('.get_attribute() exception:\n{}'.format(e))
-            return []
+        return links
 
     def check_robots(self,url):
         result = True
-        url_robots = uprs.urlunparse(
-        uprs.urlparse(url)._replace(scheme='https', path='/robots.txt', query='', params=''))
-        signal.signal(signal.SIGALRM, self.robot_hang_handler) # register hang handler
-#        signal.alarm(robot_timeout+1)  # set a short-term alarm a little longer than robot_timeout
-        try:
+        url_robots = uprs.urlunparse(uprs.urlparse(url)._replace(scheme='https',
+            path='/robots.txt', query='', params=''))
+        @self.robots_timeout
+        def robots_read():
             rp = RobotFileParserUserAgent()
             rp.set_url(url_robots)
             rp.read()
             result = rp.can_fetch(self.user_agent,url)
-        except (self.TimeoutError,Exception) as e:
-            if self.debug: print('rp.read() exception:\n{}'.format(e))
-        finally:
-            signal.alarm(0)  # cancel the alarm
-        del rp      # ensure self.close() in urllib
+            del rp      # ensure self.close() in urllib
+            return result
+        result = robots_read()
         return result
 
     def add_url_links(self,links,url=''):
@@ -589,7 +617,9 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         if self.verbose or self.debug:
             current_url = url  # default
             try:
-                current_url = self.session.current_url
+                @self.phantomjs_short_timeout
+                def phantomjs_current_url(): return self.session.current_url
+                current_url = phantomjs_current_url()
                 # the current_url method breaks on a lot of sites, e.g.
                 # python3 -c 'from selenium import webdriver; driver = webdriver.PhantomJS(); driver.get("https://github.com"); print(driver.title); print(driver.current_url); driver.quit()'
             except Exception as e:
@@ -601,7 +631,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
 
     def print_progress(self,num_links,url,terminal_width=80):
         # truncate or fill with white space
-        text_suffix = ': +{:d} of {:d} links, H(domain) = {:.1f} b'.format(num_links,self.link_count(),self.domain_entropy())
+        text_suffix = ': +{:d}/{:d} links, H(domain)={:.1f} b'.format(num_links,self.link_count(),self.domain_entropy())
         chars_used =  2 + len(text_suffix)
         if len(url) + chars_used > terminal_width:
             url = url[:terminal_width-chars_used-1] + '…'
@@ -621,6 +651,32 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         return running_bandwidth > self.gb_per_month
 
     # handle phantomjs timeouts
+    # configurable decorator to timeout phantomjs and robotparser calls
+    # http://stackoverflow.com/questions/15572288/general-decorator-to-wrap-try-except-in-python
+    # Syntax:
+    # phantomjs_timeout = block_timeout(phantomjs_hang_handler)
+    # @phantomjs_timeout
+    # def phantomjs_block():
+    #     # phantomjs stuff
+    #     pass
+    # phantomjs_block()
+
+    def block_timeout(self,hang_handler, alarm_time=timeout, errors=(Exception,), debug=False):
+        def decorator(func):
+            def call_func(*args, **kwargs):
+                signal.signal(signal.SIGALRM, hang_handler)  # register hang handler
+                signal.alarm(alarm_time)  # set an alarm
+                result = None
+                try:
+                    result = func(*args, **kwargs)
+                except errors as e:
+                    if debug: print('{} exception:\n{}'.format(func.__name__, e))
+                finally:
+                    signal.alarm(0)  # cancel the alarm
+                return result
+            return call_func
+        return decorator
+
     class TimeoutError(Exception):
         pass
 
@@ -636,7 +692,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             raise self.TimeoutError('Unable to quit the session as well.')
         raise self.TimeoutError('phantomjs is taking too long')
 
-    def robot_hang_handler(self, signum, frame):
+    def robots_hang_handler(self, signum, frame):
         if self.debug: print('Looks like robotparser has hung.')
         raise self.TimeoutError('robotparser is taking too long')
 
@@ -667,7 +723,9 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         after three attempts. """
         for k in range(3):    # three strikes
             try:
-                pid = self.session.service.process.pid
+                @self.phantomjs_short_timeout
+                def phantomjs_process_pid(): return self.session.service.process.pid
+                pid = phantomjs_process_pid()
                 rss_mb = psutil.Process(pid).memory_info().rss / float(2 ** 20)
                 break
             except (psutil.NoSuchProcess,Exception) as e:
