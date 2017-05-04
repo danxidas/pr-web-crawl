@@ -184,20 +184,20 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             # http://stackoverflow.com/questions/23390974/phantomjs-keeping-cache
             dcap = dict(DesiredCapabilities.PHANTOMJS)
             # dcap['browserName'] = 'Chrome'
-			dcap['phantomjs.page.settings.userAgent'] = ( self.user_agent )
-			dcap['phantomjs.page.settings.loadImages'] = ( 'true' )
-			dcap['phantomjs.page.settings.javascriptEnabled'] = ( 'true' )
-			dcap['phantomjs.page.settings.clearMemoryCaches'] = ( 'true' )
-			dcap['phantomjs.page.settings.resourceTimeout'] = ( max(2000,int(self.timeout * 1000)) )
-			dcap['acceptSslCerts'] = ( True )
-			dcap['applicationCacheEnabled'] = ( False )
-			dcap['handlesAlerts'] = ( False )
-			dcap['phantomjs.page.customHeaders'] = ( { 'Connection': 'keep-alive', 'Accept-Encoding': 'gzip, deflate, sdch' } )
-			driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--ignore-ssl-errors=true','--ssl-protocol=any'])
-			driver.set_window_size(1296,1018)   # Tor browser size on Linux
-			driver.implicitly_wait(self.timeout+10)
-			driver.set_page_load_timeout(self.timeout+10)
-			self.session = driver
+            dcap['phantomjs.page.settings.userAgent'] = ( self.user_agent )
+            dcap['phantomjs.page.settings.loadImages'] = ( 'true' )
+            dcap['phantomjs.page.settings.javascriptEnabled'] = ( 'true' )
+            dcap['phantomjs.page.settings.clearMemoryCaches'] = ( 'true' )
+            dcap['phantomjs.page.settings.resourceTimeout'] = ( max(2000,int(self.timeout * 1000)) )
+            dcap['acceptSslCerts'] = ( True )
+            dcap['applicationCacheEnabled'] = ( False )
+            dcap['handlesAlerts'] = ( False )
+            dcap['phantomjs.page.customHeaders'] = ( { 'Connection': 'keep-alive', 'Accept-Encoding': 'gzip, deflate, sdch' } )
+            driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--ignore-ssl-errors=true','--ssl-protocol=any'])
+            driver.set_window_size(1296,1018)   # Tor browser size on Linux
+            driver.implicitly_wait(self.timeout+10)
+            driver.set_page_load_timeout(self.timeout+10)
+            self.session = driver
 
     def quit_session(self,hard_quit=False,pid=None):
         ''' close, kill -9, quit, del '''
