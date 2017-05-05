@@ -190,10 +190,11 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             dcap['phantomjs.page.settings.clearMemoryCaches'] = ( 'true' )
             dcap['phantomjs.page.settings.resourceTimeout'] = ( max(2000,int(self.timeout * 1000)) )
             dcap['acceptSslCerts'] = ( True )
+            dcap['secureSsl'] = ( False )
             dcap['applicationCacheEnabled'] = ( False )
             dcap['handlesAlerts'] = ( False )
             dcap['phantomjs.page.customHeaders'] = ( { 'Connection': 'keep-alive', 'Accept-Encoding': 'gzip, deflate, sdch' } )
-            driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--ignore-ssl-errors=true','--ssl-protocol=any'])
+            driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--web-security=no','--ignore-ssl-errors=yes'])
             driver.set_window_size(1296,1018)   # Tor browser size on Linux
             driver.implicitly_wait(self.timeout+10)
             driver.set_page_load_timeout(self.timeout+10)
