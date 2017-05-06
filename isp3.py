@@ -550,7 +550,7 @@ Downloaded:  website.com: +LLL/NNNNN links [added], H(domain)= B bits [entropy]
         :param query: 
         :return: 
         """
-        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}&safe=active'.format(query)))
+        url = uprs.urlunparse(uprs.urlparse(self.search_url)._replace(query='q={}'.format(query)))
         if self.verbose: self.print_url(url)
         @self.phantomjs_timeout
         def phantomjs_get(): self.session.get(url)  # selenium driver
