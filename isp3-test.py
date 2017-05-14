@@ -19,7 +19,6 @@ __author__ = 'stsmith'
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__version__ = '1.0'
 
 import argparse as ap, datetime as dt, numpy as np, numpy.random as npr, os, psutil, random, requests, signal, sys, tarfile, time
 import urllib.request, urllib.robotparser as robotparser, urllib.parse as uprs
@@ -38,7 +37,7 @@ except ImportError:
     pass
 
 # nice this process on UNIX
-if hasattr(os,'nice'): os.nice(15)
+#if hasattr(os,'nice'): os.nice(15)
 
 gb_per_month = 50		# How many gigabytes to pollute per month
 max_links_cached = 100000	# Maximum number of links to cache for download
@@ -156,8 +155,6 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             alarm_time=self.timeout+2,errors=(self.TimeoutError,), debug=self.debug)
         self.phantomjs_short_timeout = self.block_timeout(self.phantomjs_hang_handler, \
             alarm_time=short_timeout+1,errors=(self.TimeoutError,Exception), debug=self.debug)
-        self.phantomjs_quit_timeout = self.block_timeout(self.phantomjs_quit_hang_handler, \
-            alarm_time=short_timeout+1,errors=(self.TimeoutError,Exception), debug=self.debug)
         self.robots_timeout = self.block_timeout(self.robots_hang_handler, \
             alarm_time=short_timeout+1,errors=(self.TimeoutError,), debug=self.debug)
         self.fake = Factory.create()
@@ -168,16 +165,12 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         self.data_usage = 0
         self.get_blacklist()
         self.get_random_words()
-        print('This is ISP Data Pollution 🐙💨, Version {}'.format(__version__))
         self.pollute_forever()
 
     def parseArgs(self):
         parser = ap.ArgumentParser()
         parser.add_argument('-bw', '--gb_per_month', help="GB per month", type=int, default=gb_per_month)
-        parser.add_argument('-mm', '--maxmemory',
-            help="Maximum memory of phantomjs (MB); 0=>restart every link",
-            type=int, default=0)
-        # parser.add_argument('-P', '--phantomjs-binary-path', help="Path to phantomjs binary", type=int, default=phantomjs_rss_limit_mb)
+        parser.add_argument('-mm', '--maxmemory', help="Maximum memory of phantomjs (MB); 0=>restart every link", type=int, default=phantomjs_rss_limit_mb)
         parser.add_argument('-g', '--debug', help="Debug flag", action='store_true')
         args = parser.parse_args()
         for k in args.__dict__: setattr(self,k,getattr(args,k))
@@ -199,7 +192,6 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             # http://stackoverflow.com/questions/23390974/phantomjs-keeping-cache
             dcap = dict(DesiredCapabilities.PHANTOMJS)
             # dcap['browserName'] = 'Chrome'
-            # if hasattr(self,'phantomjs_binary_path'): dcap['phantomjs.binary.path'] = ( self.phantomjs_binary_path )
             dcap['phantomjs.page.settings.userAgent'] = ( self.user_agent )
             dcap['phantomjs.page.settings.loadImages'] = ( 'true' )
             dcap['phantomjs.page.settings.javascriptEnabled'] = ( 'true' )
@@ -207,17 +199,16 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
             dcap['phantomjs.page.settings.resourceTimeout'] = ( max(2000,int(self.timeout * 1000)) )
             dcap['acceptSslCerts'] = ( True )
             dcap['secureSsl'] = ( False )
-            driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--web-security=no','--ignore-ssl-errors=yes'])
-            dcap['applicationCacheEnabled'] = ( True )
+            dcap['applicationCacheEnabled'] = ( False )
             dcap['handlesAlerts'] = ( False )
             dcap['phantomjs.page.customHeaders'] = ( { 'Connection': 'keep-alive', 'Accept-Encoding': 'gzip, deflate, sdch' } )
-            # if hasattr(self,'phantomjs_binary_path'): driver.capabilities.setdefault("phantomjs.binary.path", self.phantomjs_binary_path)
+            driver = webdriver.PhantomJS(desired_capabilities=dcap,service_args=['--disk-cache=false','--web-security=no','--ignore-ssl-errors=yes'])
             driver.set_window_size(1296,1018)   # Tor browser size on Linux
             driver.implicitly_wait(self.timeout+10)
             driver.set_page_load_timeout(self.timeout+10)
             self.session = driver
 
-    def quit_session(self,hard_quit=False,pid=None,phantomjs_short_timeout_decorator=None):
+    def quit_session(self,hard_quit=False,pid=None):
         """
         close, kill -9, quit, del
         :param hard_quit: 
@@ -225,15 +216,13 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         :return: 
         """
         # http://stackoverflow.com/questions/25110624/how-to-properly-stop-phantomjs-execution
-        if phantomjs_short_timeout_decorator is None:
-            phantomjs_short_timeout_decorator = self.phantomjs_short_timeout
         if hasattr(self,'session'):
             if not hard_quit:
-                @phantomjs_short_timeout_decorator
+                @self.phantomjs_short_timeout
                 def phantomjs_close(): self.session.close()
                 phantomjs_close()
             try:
-                @phantomjs_short_timeout_decorator
+                @self.phantomjs_short_timeout
                 def phantomjs_send_signal(): self.session.service.process.send_signal(signal.SIGTERM)
                 phantomjs_send_signal()
             except Exception as e:
@@ -247,12 +236,13 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
                 except Exception as e:
                     if self.debug: print('.kill() exception:\n{}'.format(e))
             try:
-                @phantomjs_short_timeout_decorator
-                def phantomjs_quit(): self.session.quit()
+                @self.phantomjs_short_timeout
+                def phantomjs_quit():
+                    self.session.quit()
+                    del self.session  # only delete session if quit is successful
                 phantomjs_quit()
             except Exception as e:
                 if self.debug: print('.quit() exception:\n{}'.format(e))
-            del self.session
 
     def clear_session(self):
         # https://sqa.stackexchange.com/questions/10466/how-to-clear-localstorage-using-selenium-and-webdriver
@@ -327,7 +317,7 @@ The crawler uses the Python requests and lxml.html libraries,and respects robots
         # if self.debug: print('There are {:d} words.'.format(len(self.words)))
 
     def pollute_forever(self):
-        if self.verbose: print("""Display format:
+        if self.verbose: print("""Display formats:
 Downloading: website.com; NNNNN links [in library], H(domain)= B bits [entropy]
 Downloaded:  website.com: +LLL/NNNNN links [added], H(domain)= B bits [entropy]
 """)
@@ -440,16 +430,12 @@ Downloaded:  website.com: +LLL/NNNNN links [added], H(domain)= B bits [entropy]
             if self.hour_trigger:
                 if hasattr(self,'session'):
                     self.set_user_agent()
-                    if True:
-                        self.quit_session()
-                        self.open_session()
-                    else:
-                        try:
-                            @self.phantomjs_short_timeout
-                            def phantomjs_delete_all_cookies(): self.session.delete_all_cookies()
-                            phantomjs_delete_all_cookies()
-                        except Exception as e:
-                            if self.debug: print('.delete_all_cookies() exception:\n{}'.format(e))
+                    try:
+                        @self.phantomjs_short_timeout
+                        def phantomjs_delete_all_cookies(): self.session.delete_all_cookies()
+                        phantomjs_delete_all_cookies()
+                    except Exception as e:
+                        if self.debug: print('.delete_all_cookies() exception:\n{}'.format(e))
                     self.seed_links()
                 else: self.open_session()
                 self.hour_trigger = False
@@ -757,13 +743,12 @@ Downloaded:  website.com: +LLL/NNNNN links [added], H(domain)= B bits [entropy]
         # http://stackoverflow.com/questions/492519/timeout-on-a-function-call
         if self.debug: print('Looks like phantomjs has hung.')
         try:
-            self.quit_session(phantomjs_short_timeout_decorator=self.phantomjs_quit_timeout)
+            self.quit_session(hard_quit=True)
+            self.open_session()
         except Exception as e:
-            if self.debug: print(e)
-        self.open_session()
-
-    def phantomjs_quit_hang_handler(self, signum, frame):
-        raise self.TimeoutError('phantomjs .quit method is taking too long')
+            if self.debug: print('.quit_session() exception:\n{}'.format(e))
+            raise self.TimeoutError('Unable to quit the session as well.')
+        raise self.TimeoutError('phantomjs is taking too long')
 
     def robots_hang_handler(self, signum, frame):
         if self.debug: print('Looks like robotparser has hung.')
