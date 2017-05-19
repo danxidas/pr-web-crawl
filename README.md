@@ -19,6 +19,7 @@ python3 isp_data_pollution.py
 python3 isp_data_pollution.py --help
 python3 isp_data_pollution.py -bw 1024  # 1 TB per month
 python3 isp_data_pollution.py -g        # print debugging statements
+-mm 0 will force phantjoms to restart its process for each new job.  This may be a way to improve longevity
 ```
 
 # Motivation for Efficacy
